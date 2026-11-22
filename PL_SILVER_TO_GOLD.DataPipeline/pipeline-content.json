@@ -1,0 +1,238 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "value": "select table_id,gold_table_name,notebook_id from ctrl.table_config where is_active = 1 and stage = 'SILVER_TO_GOLD'",
+              "type": "Expression"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "HealthCareAnalyticsWH",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                  "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": false
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Read Source Tables List",
+        "dependsOn": []
+      },
+      {
+        "type": "ForEach",
+        "typeProperties": {
+          "isSequential": false,
+          "items": {
+            "value": "@activity('Read Source Tables List').output.value",
+            "type": "Expression"
+          },
+          "activities": [
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "insert into ctrl.audit_log(adf_run_id, table_id, stage, status, start_time, created_timestamp)\nvalues('@{pipeline().parameters.adf_run_id}', @{item().table_id},'SILVER_TO_GOLD', 'IN_PROGRESS', CAST(SYSUTCDATETIME() AS DATETIME2(6)), CAST(SYSUTCDATETIME() AS DATETIME2(6)))",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Insert in Progress Status",
+              "dependsOn": []
+            },
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "update ctrl.audit_log\nset status = 'FAILED', end_time = CAST(SYSUTCDATETIME() AS DATETIME2(6))\nWHERE adf_run_id='@{pipeline().parameters.adf_run_id}' and table_id=@{item().table_id}",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Update Failed Status",
+              "dependsOn": [
+                {
+                  "activity": "Silver to Gold",
+                  "dependencyConditions": [
+                    "Failed"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "TridentNotebook",
+              "typeProperties": {
+                "notebookId": {
+                  "value": "@item().notebook_id",
+                  "type": "Expression"
+                },
+                "workspaceId": "5f14e6e5-c89a-4fed-82ee-bd157cba2456"
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Silver to Gold",
+              "dependsOn": [
+                {
+                  "activity": "Insert in Progress Status",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "UPDATE ctrl.audit_log\nSET\n    status = 'SUCCESS',\n    end_time = CAST(SYSUTCDATETIME() AS DATETIME2(6)),\n    records_written = @{activity('Silver to Gold').output.result.exitValue}\nWHERE adf_run_id = '@{pipeline().parameters.adf_run_id}'\nAND table_id = @{item().table_id}",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Update Success Status",
+              "dependsOn": [
+                {
+                  "activity": "Silver to Gold",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Fail",
+              "typeProperties": {
+                "message": "The Gold notebook is failed",
+                "errorCode": "500"
+              },
+              "name": "Update pipeline as failed",
+              "dependsOn": [
+                {
+                  "activity": "Silver to Gold",
+                  "dependencyConditions": [
+                    "Failed"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "name": "Ingest All Tables",
+        "dependsOn": [
+          {
+            "activity": "Read Source Tables List",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "adf_run_id": {
+        "type": "string",
+        "defaultValue": "a15"
+      }
+    }
+  }
+}

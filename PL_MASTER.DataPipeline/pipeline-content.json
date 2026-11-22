@@ -1,0 +1,102 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "InvokePipeline",
+        "typeProperties": {
+          "parameters": {
+            "source_system": "neon_postgres",
+            "adf_run_id": {
+              "value": "@pipeline().RunId",
+              "type": "Expression"
+            }
+          },
+          "waitOnCompletion": true,
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "pipelineId": "00ecff90-ae42-859c-4e6c-b5249078f8d6",
+          "operationType": "InvokeFabricPipeline"
+        },
+        "externalReferences": {
+          "connection": "50ccd812-bcdf-4e16-ae39-bd46aca19bf3"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Source to Silver Postgres",
+        "dependsOn": []
+      },
+      {
+        "type": "InvokePipeline",
+        "typeProperties": {
+          "parameters": {
+            "source_system": "adls_csv",
+            "adf_run_id": {
+              "value": "@pipeline().RunId",
+              "type": "Expression"
+            }
+          },
+          "waitOnCompletion": true,
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "pipelineId": "00ecff90-ae42-859c-4e6c-b5249078f8d6",
+          "operationType": "InvokeFabricPipeline"
+        },
+        "externalReferences": {
+          "connection": "50ccd812-bcdf-4e16-ae39-bd46aca19bf3"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Source to Silver Onelake csv",
+        "dependsOn": []
+      },
+      {
+        "type": "InvokePipeline",
+        "typeProperties": {
+          "parameters": {
+            "adf_run_id": {
+              "value": "@pipeline().RunId",
+              "type": "Expression"
+            }
+          },
+          "waitOnCompletion": true,
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "pipelineId": "841cbcac-856b-867c-44f5-a0767f417261",
+          "operationType": "InvokeFabricPipeline"
+        },
+        "externalReferences": {
+          "connection": "50ccd812-bcdf-4e16-ae39-bd46aca19bf3"
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Source to Gold",
+        "dependsOn": [
+          {
+            "activity": "Source to Silver Postgres",
+            "dependencyConditions": [
+              "Completed"
+            ]
+          },
+          {
+            "activity": "Source to Silver Onelake csv",
+            "dependencyConditions": [
+              "Completed"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

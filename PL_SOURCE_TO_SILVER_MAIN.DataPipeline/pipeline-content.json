@@ -1,0 +1,216 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "value": "select table_id from ctrl.table_config where is_active = 1 and source_system = '@{pipeline().parameters.source_system}'",
+              "type": "Expression"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "HealthCareAnalyticsWH",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                  "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": false
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 2,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Read Source Tables List",
+        "dependsOn": []
+      },
+      {
+        "type": "ForEach",
+        "typeProperties": {
+          "isSequential": true,
+          "items": {
+            "value": "@activity('Read Source Tables List').output.value",
+            "type": "Expression"
+          },
+          "activities": [
+            {
+              "type": "InvokePipeline",
+              "typeProperties": {
+                "parameters": {
+                  "table_id": {
+                    "value": "@item().table_id",
+                    "type": "Expression"
+                  },
+                  "adf_run_id": {
+                    "value": "@pipeline().parameters.adf_run_id",
+                    "type": "Expression"
+                  }
+                },
+                "waitOnCompletion": true,
+                "workspaceId": "00000000-0000-0000-0000-000000000000",
+                "pipelineId": "42625968-5fc0-a0f8-4802-f22196a88a1d",
+                "operationType": "InvokeFabricPipeline"
+              },
+              "externalReferences": {
+                "connection": "50ccd812-bcdf-4e16-ae39-bd46aca19bf3"
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Ingest from Source to Silver",
+              "dependsOn": [
+                {
+                  "activity": "Insert in Progress Status",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "insert into ctrl.audit_log(adf_run_id, table_id, stage, status, start_time, created_timestamp)\nvalues('@{pipeline().parameters.adf_run_id}', @{item().table_id},'SOURCE_TO_SILVER', 'IN_PROGRESS', CAST(SYSUTCDATETIME() AS DATETIME2(6)), CAST(SYSUTCDATETIME() AS DATETIME2(6)))",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Insert in Progress Status",
+              "dependsOn": []
+            },
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "update ctrl.audit_log\nset status = 'FAILED', end_time = CAST(SYSUTCDATETIME() AS DATETIME2(6))\nWHERE adf_run_id='@{pipeline().parameters.adf_run_id}' and table_id=@{item().table_id}",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Update Failed Status",
+              "dependsOn": [
+                {
+                  "activity": "Ingest from Source to Silver",
+                  "dependencyConditions": [
+                    "Failed"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Fail",
+              "typeProperties": {
+                "message": "inner pipeline failed",
+                "errorCode": "500"
+              },
+              "name": "Update pipeline as failed",
+              "dependsOn": [
+                {
+                  "activity": "Ingest from Source to Silver",
+                  "dependencyConditions": [
+                    "Failed"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "name": "Ingest All Tables",
+        "dependsOn": [
+          {
+            "activity": "Read Source Tables List",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "source_system": {
+        "type": "string",
+        "defaultValue": "neon_postgres"
+      },
+      "adf_run_id": {
+        "type": "string",
+        "defaultValue": "a11"
+      }
+    },
+    "variables": {
+      "test": {
+        "type": "String"
+      }
+    }
+  }
+}

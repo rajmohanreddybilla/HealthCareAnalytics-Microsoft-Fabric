@@ -1,0 +1,570 @@
+{
+  "properties": {
+    "activities": [
+      {
+        "type": "Lookup",
+        "typeProperties": {
+          "source": {
+            "type": "DataWarehouseSource",
+            "sqlReaderQuery": {
+              "value": "SELECT * FROM ctrl.table_config WHERE table_id = '@{pipeline().parameters.table_id}'",
+              "type": "Expression"
+            },
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00"
+          },
+          "datasetSettings": {
+            "type": "DataWarehouseTable",
+            "schema": [],
+            "linkedService": {
+              "name": "HealthCareAnalyticsWH",
+              "properties": {
+                "type": "DataWarehouse",
+                "typeProperties": {
+                  "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                  "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                  "workspaceId": "00000000-0000-0000-0000-000000000000"
+                },
+                "annotations": []
+              }
+            },
+            "annotations": []
+          },
+          "firstRowOnly": true
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Read Table Details",
+        "dependsOn": []
+      },
+      {
+        "type": "SetVariable",
+        "typeProperties": {
+          "variableName": "start_time",
+          "value": {
+            "value": "@formatDateTime(utcNow(), 'yyyy-MM-dd_hh:mm:ss')",
+            "type": "Expression"
+          }
+        },
+        "policy": {
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Set Start Time",
+        "dependsOn": []
+      },
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "5ec36712-7173-8dcb-4384-b578cc071927",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "parameters": {
+            "source_system": {
+              "value": {
+                "value": "@activity('Read Table Details').output.firstRow.source_system",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "table_name": {
+              "value": {
+                "value": "@activity('Read Table Details').output.firstRow.bronze_table_name",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "landing_timestamp": {
+              "value": {
+                "value": "@variables('start_time')",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "source_file_format": {
+              "value": {
+                "value": "@coalesce(activity('Read Table Details').output.firstRow.source_file_format, '')",
+                "type": "Expression"
+              },
+              "type": "string"
+            }
+          }
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Landing to Bronze",
+        "dependsOn": [
+          {
+            "activity": "Check Source System",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "TridentNotebook",
+        "typeProperties": {
+          "notebookId": "dfeed94f-af93-978b-44e5-c9f23d3fa6d7",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "parameters": {
+            "landing_timestamp": {
+              "value": {
+                "value": "@variables('start_time')",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "table_name": {
+              "value": {
+                "value": "@activity('Read Table Details').output.firstRow.silver_table_name",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "merge_keys": {
+              "value": {
+                "value": "@coalesce(activity('Read Table Details').output.firstRow.merge_keys,'')",
+                "type": "Expression"
+              },
+              "type": "string"
+            },
+            "load_type": {
+              "value": {
+                "value": "@activity('Read Table Details').output.firstRow.load_type",
+                "type": "Expression"
+              },
+              "type": "string"
+            }
+          }
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Bronze to Silver",
+        "dependsOn": [
+          {
+            "activity": "Landing to Bronze",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Script",
+        "typeProperties": {
+          "scripts": [
+            {
+              "text": {
+                "value": "update ctrl.audit_log\nset status = 'SUCCESS', end_time = CAST(SYSUTCDATETIME() AS DATETIME2(6)), records_written=@{activity('Bronze to Silver').output.result.exitValue}\nWHERE adf_run_id='@{pipeline().parameters.adf_run_id}' and table_id=@{pipeline().parameters.table_id}",
+                "type": "Expression"
+              },
+              "type": "Query"
+            }
+          ],
+          "scriptBlockExecutionTimeout": "02:00:00"
+        },
+        "linkedService": {
+          "name": "HealthCareAnalyticsWH",
+          "properties": {
+            "type": "DataWarehouse",
+            "typeProperties": {
+              "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+              "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+              "workspaceId": "00000000-0000-0000-0000-000000000000"
+            },
+            "annotations": []
+          }
+        },
+        "policy": {
+          "timeout": "0.12:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureInput": false,
+          "secureOutput": false
+        },
+        "name": "Update Success Status",
+        "dependsOn": [
+          {
+            "activity": "Bronze to Silver",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@not(equals(activity('Read Table Details').output.firstRow.load_type, 'FULL'))",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "type": "Lookup",
+              "typeProperties": {
+                "source": {
+                  "type": "DataWarehouseSource",
+                  "sqlReaderQuery": {
+                    "value": "select watermark_value from ctrl.watermark where table_id = @{pipeline().parameters.table_id}",
+                    "type": "Expression"
+                  },
+                  "partitionOption": "None",
+                  "queryTimeout": "02:00:00"
+                },
+                "datasetSettings": {
+                  "type": "DataWarehouseTable",
+                  "schema": [],
+                  "linkedService": {
+                    "name": "HealthCareAnalyticsWH",
+                    "properties": {
+                      "type": "DataWarehouse",
+                      "typeProperties": {
+                        "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                        "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                        "workspaceId": "00000000-0000-0000-0000-000000000000"
+                      },
+                      "annotations": []
+                    }
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Read Watermark",
+              "dependsOn": []
+            },
+            {
+              "type": "SetVariable",
+              "typeProperties": {
+                "variableName": "watermark_value",
+                "value": {
+                  "value": "@activity('Read Watermark').output.firstRow.watermark_value",
+                  "type": "Expression"
+                }
+              },
+              "policy": {
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Store Watermark Value",
+              "dependsOn": [
+                {
+                  "activity": "Read Watermark",
+                  "dependencyConditions": [
+                    "Succeeded"
+                  ]
+                }
+              ]
+            }
+          ],
+          "ifFalseActivities": []
+        },
+        "name": "Check Load Type",
+        "dependsOn": [
+          {
+            "activity": "Read Table Details",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Set Start Time",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "IfCondition",
+        "typeProperties": {
+          "expression": {
+            "value": "@not(equals(activity('Read Table Details').output.firstRow.load_type, 'FULL'))",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "type": "Script",
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "text": {
+                      "value": "update ctrl.watermark\nset watermark_value = SYSUTCDATETIME()\nWHERE table_id = @{pipeline().parameters.table_id}",
+                      "type": "Expression"
+                    },
+                    "type": "Query"
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "02:00:00"
+              },
+              "linkedService": {
+                "name": "HealthCareAnalyticsWH",
+                "properties": {
+                  "type": "DataWarehouse",
+                  "typeProperties": {
+                    "artifactId": "63ba7174-5cbc-9570-4f65-e961310ae723",
+                    "endpoint": "bfuznrz7drzudguoboor2baura-4xtbix42zdwu7axoxukxzoreky.datawarehouse.fabric.microsoft.com",
+                    "workspaceId": "00000000-0000-0000-0000-000000000000"
+                  },
+                  "annotations": []
+                }
+              },
+              "policy": {
+                "timeout": "0.12:00:00",
+                "retry": 0,
+                "retryIntervalInSeconds": 30,
+                "secureInput": false,
+                "secureOutput": false
+              },
+              "name": "Update Watermark",
+              "dependsOn": []
+            }
+          ],
+          "ifFalseActivities": []
+        },
+        "name": "Checking Load Type and Update Watermark",
+        "dependsOn": [
+          {
+            "activity": "Bronze to Silver",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Switch",
+        "typeProperties": {
+          "on": {
+            "value": "@activity('Read Table Details').output.firstRow.source_system",
+            "type": "Expression"
+          },
+          "cases": [
+            {
+              "value": "neon_postgres",
+              "activities": [
+                {
+                  "type": "Copy",
+                  "typeProperties": {
+                    "source": {
+                      "type": "PostgreSqlSource",
+                      "query": {
+                        "value": "SELECT * FROM PUBLIC.@{activity('Read Table Details').output.firstRow.source_table_name}\n@{\n    if(equals(activity('Read Table Details').output.firstRow.load_type, 'FULL')\n        ,'',\n        concat(\n            'where ', activity('Read Table Details').output.firstRow.watermark_column,' > ', '''', variables('watermark_value'),'''')\n    )\n}",
+                        "type": "Expression"
+                      },
+                      "queryTimeout": "02:00:00",
+                      "datasetSettings": {
+                        "type": "PostgreSqlTable",
+                        "schema": [],
+                        "externalReferences": {
+                          "connection": "6a462cb0-2a7e-4905-b24b-da8f258fd1c6"
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "sink": {
+                      "type": "ParquetSink",
+                      "formatSettings": {
+                        "type": "ParquetWriteSettings",
+                        "enableVertiParquet": true
+                      },
+                      "storeSettings": {
+                        "type": "LakehouseWriteSettings"
+                      },
+                      "datasetSettings": {
+                        "type": "Parquet",
+                        "typeProperties": {
+                          "location": {
+                            "type": "LakehouseLocation",
+                            "folderPath": {
+                              "value": "@concat(\n    activity('Read Table Details').output.firstRow.source_system,\n    '/',\n    activity('Read Table Details').output.firstRow.source_table_name,\n    '/',\n    variables('start_time')\n)",
+                              "type": "Expression"
+                            }
+                          },
+                          "compressionCodec": "snappy"
+                        },
+                        "schema": [],
+                        "linkedService": {
+                          "name": "HealthCareAnalyticsLH",
+                          "properties": {
+                            "type": "Lakehouse",
+                            "typeProperties": {
+                              "artifactId": "dd8e0afb-428f-a2c1-43d8-39197c722bdd",
+                              "workspaceId": "00000000-0000-0000-0000-000000000000",
+                              "rootFolder": "Files"
+                            },
+                            "annotations": []
+                          }
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "translator": {
+                      "type": "TabularTranslator",
+                      "typeConversion": true,
+                      "typeConversionSettings": {
+                        "allowDataTruncation": true,
+                        "treatBooleanAsNumber": false
+                      }
+                    },
+                    "enableStaging": false
+                  },
+                  "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureInput": false,
+                    "secureOutput": false
+                  },
+                  "name": "Source to Landing Ingestion",
+                  "dependsOn": []
+                }
+              ]
+            },
+            {
+              "value": "adls_csv",
+              "activities": [
+                {
+                  "type": "Copy",
+                  "typeProperties": {
+                    "source": {
+                      "type": "BinarySource",
+                      "formatSettings": {
+                        "type": "BinaryReadSettings"
+                      },
+                      "storeSettings": {
+                        "type": "LakehouseReadSettings",
+                        "recursive": true,
+                        "deleteFilesAfterCompletion": false,
+                        "modifiedDatetimeStart": {
+                          "value": "@variables('watermark_value')",
+                          "type": "Expression"
+                        }
+                      },
+                      "datasetSettings": {
+                        "type": "Binary",
+                        "typeProperties": {
+                          "location": {
+                            "type": "LakehouseLocation",
+                            "folderPath": {
+                              "value": "@concat(\n    'external_files/',\n    activity('Read Table Details').output.firstRow.source_path\n)",
+                              "type": "Expression"
+                            }
+                          }
+                        },
+                        "linkedService": {
+                          "name": "HealthCareAnalyticsLH",
+                          "properties": {
+                            "type": "Lakehouse",
+                            "typeProperties": {
+                              "artifactId": "dd8e0afb-428f-a2c1-43d8-39197c722bdd",
+                              "workspaceId": "00000000-0000-0000-0000-000000000000",
+                              "rootFolder": "Files"
+                            },
+                            "annotations": []
+                          }
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "sink": {
+                      "type": "BinarySink",
+                      "storeSettings": {
+                        "type": "LakehouseWriteSettings"
+                      },
+                      "datasetSettings": {
+                        "type": "Binary",
+                        "typeProperties": {
+                          "location": {
+                            "type": "LakehouseLocation",
+                            "folderPath": {
+                              "value": "@concat(\n    activity('Read Table Details').output.firstRow.source_system,\n    '/',\n    activity('Read Table Details').output.firstRow.source_table_name,\n    '/',\n    variables('start_time')\n)",
+                              "type": "Expression"
+                            }
+                          }
+                        },
+                        "linkedService": {
+                          "name": "HealthCareAnalyticsLH",
+                          "properties": {
+                            "type": "Lakehouse",
+                            "typeProperties": {
+                              "artifactId": "dd8e0afb-428f-a2c1-43d8-39197c722bdd",
+                              "workspaceId": "00000000-0000-0000-0000-000000000000",
+                              "rootFolder": "Files"
+                            },
+                            "annotations": []
+                          }
+                        },
+                        "annotations": []
+                      }
+                    },
+                    "enableStaging": false
+                  },
+                  "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureInput": false,
+                    "secureOutput": false
+                  },
+                  "name": "Ingest CSV from Source to Landing",
+                  "dependsOn": []
+                }
+              ]
+            }
+          ],
+          "defaultActivities": []
+        },
+        "name": "Check Source System",
+        "dependsOn": [
+          {
+            "activity": "Check Load Type",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "table_id": {
+        "type": "string",
+        "defaultValue": "1"
+      },
+      "adf_run_id": {
+        "type": "string",
+        "defaultValue": "a1"
+      }
+    },
+    "variables": {
+      "start_time": {
+        "type": "String"
+      },
+      "watermark_value": {
+        "type": "String"
+      }
+    }
+  }
+}

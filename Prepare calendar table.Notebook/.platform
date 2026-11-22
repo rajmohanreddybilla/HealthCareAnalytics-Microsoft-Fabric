@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "Prepare calendar table"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "2128cb50-b3b2-9d9c-49b5-597d5fae363b"
+  }
+}

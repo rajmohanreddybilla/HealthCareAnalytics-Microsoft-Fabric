@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Warehouse",
+    "displayName": "HealthCareAnalyticsWH",
+    "description": ""
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "63ba7174-5cbc-9570-4f65-e961310ae723"
+  }
+}
